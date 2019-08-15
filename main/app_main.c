@@ -352,7 +352,7 @@ static void mqtt_app_start(void)
       esp_mqtt_client_start(client);
       
       //vTaskDelay(30 * 1000 / portTICK_PERIOD_MS);
-      sleeppa(300);
+      sleeppa(60);
 
     }else{
       //printf("semaforo occupato");
