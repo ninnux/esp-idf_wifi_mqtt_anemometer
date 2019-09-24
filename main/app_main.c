@@ -43,6 +43,45 @@ double vento=0;
 #define ESP_INTR_FLAG_DEFAULT 0
 #include "ninux_esp32_ota.h"
 
+
+#include <qmc5883l.h>
+#include <math.h>
+#include <string.h>
+
+#define SDA_GPIO 16
+#define SCL_GPIO 17
+
+float xvalue[200];
+float yvalue[200];
+float zvalue[200];
+int i,k;
+float xmin=0;
+float xmax=0;
+float ymin=0;
+float ymax=0;
+float zmin=0;
+float zmax=0;
+
+float Xoffset;
+float Yoffset;
+float Zoffset;
+float scale_x;
+float scale_y;
+float scale_z;
+float xmag;
+float ymag;
+float zmag;
+float angle;
+float angle2;
+float angle3;
+int wind_angle=400;
+double avg_delta_x;
+double avg_delta_y;
+double avg_delta_z;
+double avg_delta;
+
+
+
 //static const char *TAG = "MQTT_EXAMPLE";
 //const char *TAG = "MQTT_EXAMPLE";
 
@@ -55,6 +94,7 @@ static RTC_DATA_ATTR struct timeval sleep_enter_time;
 uint8_t msgData[32];
 
 SemaphoreHandle_t xSemaphore = NULL;
+SemaphoreHandle_t xSemaphore2 = NULL;
 
 
 static const gpio_num_t SENSOR_GPIO = 17;
@@ -64,6 +104,105 @@ static const int RESCAN_INTERVAL = 8;
 
 static xQueueHandle gpio_evt_queue = NULL;
 struct timeval now;
+
+
+
+void vane_task(void *pvParameters)
+{
+   if( xSemaphore2 != NULL )
+   {
+       if( xSemaphoreTake( xSemaphore2, ( TickType_t ) 10 ) == pdTRUE)  
+       {
+        qmc5883l_t dev;
+    
+        memset(&dev, 0, sizeof(qmc5883l_t));
+    
+        ESP_ERROR_CHECK(i2cdev_init());
+        ESP_ERROR_CHECK(qmc5883l_init_desc(&dev, 0, QMC5883L_I2C_ADDR_DEF, SDA_GPIO, SCL_GPIO));
+    
+        // 50Hz data rate, 128 samples, -2G..+2G range
+        ESP_ERROR_CHECK(qmc5883l_set_config(&dev, QMC5883L_DR_50, QMC5883L_OSR_128, QMC5883L_RNG_2));
+    
+    
+    
+       qmc5883l_data_t data;
+        for(i=0;i<200;i++){
+    	if (qmc5883l_get_data(&dev, &data) == ESP_OK){
+    		xvalue[i]=data.x;
+    		yvalue[i]=data.y;
+    		zvalue[i]=data.z;
+    		if(xmax<xvalue[i]){ xmax=xvalue[i];};
+    		if(ymax<yvalue[i]){ ymax=yvalue[i];};
+    		if(zmax<zvalue[i]){ zmax=zvalue[i];};
+    		if(xmin>xvalue[i]){ xmin=xvalue[i];};
+    		if(ymin>yvalue[i]){ ymin=yvalue[i];};
+    	if(zmin>zvalue[i]){ zmin=zvalue[i];};
+    	}
+            vTaskDelay(50 / portTICK_PERIOD_MS);
+    	
+        }
+        // from https://appelsiini.net/2018/calibrate-magnetometer/
+        Xoffset=(xmax+xmin)/2;
+        Yoffset=(ymax+ymin)/2;
+        Zoffset = (zmax + zmin)/2;
+        avg_delta_x=(xmax-xmin)/2;
+        avg_delta_y=(ymax-ymin)/2;
+        avg_delta_z=(zmax-zmin)/2;
+        printf("avg_x:%.2f avg_y:%.2f avg_z:%.2f\n",avg_delta_x,avg_delta_y,avg_delta_z); 
+        avg_delta=(avg_delta_x+avg_delta_y+avg_delta_z)/3;
+        
+        scale_x=avg_delta/avg_delta_x;
+        scale_y=avg_delta/avg_delta_y;
+        scale_z=avg_delta/avg_delta_z;
+        ///
+    
+    	
+        //Xoffset = (xmax + xmin)/2;
+        //Yoffset = (ymax + ymin)/2;
+    
+        //Xscale = xmax - xmin;
+        //Yscale = ymax - ymin;
+    
+        printf("Magnetic data min: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmin, ymin, zmin);
+        printf("Magnetic data max: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmax, ymax, zmax);
+        //printf("Offset X:%.2f, Y:%.2f\n", Xoffset,Yoffset);
+        //printf("scale X:%.2f, Y:%.2f\n", Xscale,Yscale);
+    
+        for(k=0;k<10;k++)
+        {
+            qmc5883l_data_t data2;
+            if (qmc5883l_get_data(&dev, &data2) == ESP_OK){
+    	xmag=data2.x;
+    	ymag=data2.y;
+    	zmag=data2.z;
+            xmag = (xmag - Xoffset) * scale_x;
+            ymag = (ymag - Yoffset) * scale_y;
+            zmag = (zmag - Zoffset) * scale_z;
+            angle = atan2(xmag, ymag)*(180/3.14)+180;
+            angle2 = atan2(xmag, zmag)*(180/3.14)+180;
+            angle3 = atan2(ymag, zmag)*(180/3.14)+180;
+    
+    
+            printf("Magnetic data min: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmin, ymin, zmin);
+            printf("Magnetic data max: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmax, ymax, zmax);
+            printf("Magnetic reading data2: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", data2.x, data2.y, data2.z);
+            printf("results X:%.2f,Y:%.2f , angle:%.2f\n", xmag, ymag, angle);
+            printf("angle:%.2f\n", 360-angle);
+            printf("angle2:%.2f\n", 360-angle2);
+            printf("angle3:%.3f\n", 360-angle3);
+    	    wind_angle+=(int) 360-angle2;
+            }else{
+                printf("Could not read qmc5883L data\n");
+    	}	
+    
+            vTaskDelay(250 / portTICK_PERIOD_MS);
+        }
+    	wind_angle=wind_angle/k;
+    	xSemaphoreGive( xSemaphore2 );
+      }
+   }
+}
+
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
@@ -76,45 +215,52 @@ void anemometer_task(void *pvParameter)
 {
    if( xSemaphore != NULL )
    {
-       if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE )
+       if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE)  
       {
-    	uint32_t io_num;
-    	uint32_t oldtime=0;
-    	uint32_t elapsed=0;
-    	float ms=0;
-    	float m=0;
-    	float elapsed_sec=0;
-    	int r=23;
-    	int i=0;
-    	double mssum=0;
-    	extern double vento;
-    	for(i=0;i<10;i++) {
-    	    if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-    	        if(io_num==GPIO_INPUT_IO_1){
-    	    	gettimeofday(&now, NULL);
-    	    	int time = now.tv_sec;
-    	    	int utime = now.tv_usec;
-    	    	uint32_t nowtime=(time*1000000)+utime;
-    	    	elapsed=nowtime-oldtime;
-    	    	elapsed_sec=(float) elapsed/1000000;
-    	    	m=(float) r/100;
-    	    	ms=(float) (m*6.28)/elapsed_sec;
+        if (xSemaphoreTake( xSemaphore2, ( TickType_t ) 10 ) == pdTRUE)
+	{
+    	  uint32_t io_num;
+    	  uint32_t oldtime=0;
+    	  uint32_t elapsed=0;
+    	  float ms=0;
+    	  float m=0;
+    	  float elapsed_sec=0;
+    	  int r=23;
+    	  int i=0;
+    	  double mssum=0;
+    	  extern double vento;
+    	  for(i=0;i<10;i++) {
+    	      if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+    	          if(io_num==GPIO_INPUT_IO_1){
+    	      	gettimeofday(&now, NULL);
+    	      	int time = now.tv_sec;
+    	      	int utime = now.tv_usec;
+    	      	uint32_t nowtime=(time*1000000)+utime;
+    	      	elapsed=nowtime-oldtime;
+    	      	elapsed_sec=(float) elapsed/1000000;
+    	      	m=(float) r/100;
+    	      	ms=(float) (m*6.28)/elapsed_sec;
 
-    			printf("passati %d usec = %f m/s = %f km/h = %f knots\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384));
-    			//printf("passati %d usec = %f m/s = %f km/h = %f knots; m=%f elapsed_sec=%f\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384),m,elapsed_sec);
-    			oldtime=nowtime;
-    	    	mssum+=ms;
-    	    	
-    	        }else{
-    	        	printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
-    	        }
-    	    }
-    	}
-	vento=mssum/10;
-	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
-	xSemaphoreGive( xSemaphore );
-	vTaskDelete(NULL);
-        }
+    	  		printf("passati %d usec = %f m/s = %f km/h = %f knots\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384));
+    	  		//printf("passati %d usec = %f m/s = %f km/h = %f knots; m=%f elapsed_sec=%f\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384),m,elapsed_sec);
+    	  		oldtime=nowtime;
+    	      	mssum+=ms;
+    	      	
+    	          }else{
+    	          	printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+    	          }
+    	      }
+    	  }
+	  vento=mssum/10;
+	  if(wind_angle!=400){
+	  	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
+	  }else{
+	  	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
+	  }
+	  xSemaphoreGive( xSemaphore );
+	  vTaskDelete(NULL);
+         }
+       }
     }
 }
 
@@ -133,6 +279,7 @@ void init_gpio_for_anemometer(){
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     //start gpio task
+    xTaskCreate(vane_task, "vane_task", 2048, NULL, 10, NULL);
     xTaskCreate(anemometer_task, "anemometer_task", 2048, NULL, 10, NULL);
 
     //install gpio isr service
@@ -318,47 +465,45 @@ static void mqtt_app_start(void)
    while (1) {
    	if( xSemaphore != NULL )
    	{
-
-
-#if CONFIG_BROKER_URL_FROM_STDIN
-    char line[128];
-
-    if (strcmp(mqtt_cfg.uri, "FROM_STDIN") == 0) {
-        int count = 0;
-        printf("Please enter url of mqtt broker\n");
-        while (count < 128) {
-            int c = fgetc(stdin);
-            if (c == '\n') {
-                line[count] = '\0';
-                break;
-            } else if (c > 0 && c < 127) {
-                line[count] = c;
-                ++count;
-            }
-            vTaskDelay(10 / portTICK_PERIOD_MS);
-        }
-        mqtt_cfg.uri = line;
-        printf("Broker url: %s\n", line);
-    } else {
-        ESP_LOGE(TAG, "Configuration mismatch: wrong broker url");
-        abort();
+          #if CONFIG_BROKER_URL_FROM_STDIN
+          char line[128];
+          
+          if (strcmp(mqtt_cfg.uri, "FROM_STDIN") == 0) {
+              int count = 0;
+              printf("Please enter url of mqtt broker\n");
+              while (count < 128) {
+                  int c = fgetc(stdin);
+                  if (c == '\n') {
+                      line[count] = '\0';
+                      break;
+                  } else if (c > 0 && c < 127) {
+                      line[count] = c;
+                      ++count;
+                  }
+                  vTaskDelay(10 / portTICK_PERIOD_MS);
+              }
+              mqtt_cfg.uri = line;
+              printf("Broker url: %s\n", line);
+          } else {
+              ESP_LOGE(TAG, "Configuration mismatch: wrong broker url");
+              abort();
+          }
+          #endif /* CONFIG_BROKER_URL_FROM_STDIN */
+          
+          
+          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE ) { 
+            printf("semaforo libero");
+            esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
+            esp_mqtt_client_start(client);
+            
+            //vTaskDelay(30 * 1000 / portTICK_PERIOD_MS);
+            sleeppa(60);
+          
+          }else{
+            //printf("semaforo occupato");
+          }
+         }
     }
-#endif /* CONFIG_BROKER_URL_FROM_STDIN */
-
-
-    if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE ) { 
-      printf("semaforo libero");
-      esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
-      esp_mqtt_client_start(client);
-      
-      //vTaskDelay(30 * 1000 / portTICK_PERIOD_MS);
-      sleeppa(60);
-
-    }else{
-      //printf("semaforo occupato");
-    }
-    }
-  }
 }
 
 void app_main()
@@ -393,6 +538,7 @@ void app_main()
 
 
     vSemaphoreCreateBinary( xSemaphore );
+    vSemaphoreCreateBinary( xSemaphore2 );
     vTaskDelay( 1000 / portTICK_RATE_MS );
     //xTaskCreate( &DHT_task, "DHT_task", 2048, NULL, 5, NULL );
     //i2c_master_init();
