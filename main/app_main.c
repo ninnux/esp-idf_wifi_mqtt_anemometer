@@ -201,6 +201,7 @@ void vane_task(void *pvParameters)
     	xSemaphoreGive( xSemaphore2 );
       }
    }
+   vTaskDelete( NULL );
 }
 
 
@@ -217,8 +218,6 @@ void anemometer_task(void *pvParameter)
    {
        if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE)  
       {
-        if (xSemaphoreTake( xSemaphore2, ( TickType_t ) 10 ) == pdTRUE)
-	{
     	  uint32_t io_num;
     	  uint32_t oldtime=0;
     	  uint32_t elapsed=0;
@@ -252,14 +251,13 @@ void anemometer_task(void *pvParameter)
     	      }
     	  }
 	  vento=mssum/10;
-	  if(wind_angle!=400){
-	  	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
-	  }else{
-	  	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
-	  }
+	  //if(wind_angle!=400){
+	  //	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
+	  //}else{
+	  //	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
+	  //}
 	  xSemaphoreGive( xSemaphore );
 	  vTaskDelete(NULL);
-         }
        }
     }
 }
@@ -463,7 +461,7 @@ static void mqtt_app_start(void)
 
 
    while (1) {
-   	if( xSemaphore != NULL )
+   	if( xSemaphore != NULL && xSemaphore2 != NULL)
    	{
           #if CONFIG_BROKER_URL_FROM_STDIN
           char line[128];
@@ -491,17 +489,26 @@ static void mqtt_app_start(void)
           #endif /* CONFIG_BROKER_URL_FROM_STDIN */
           
           
-          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE ) { 
-            printf("semaforo libero");
+          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE) 
+	  {
+	   if( xSemaphoreTake( xSemaphore2, ( TickType_t ) 10 ) == pdTRUE )  { 
+	    
+	    if(wind_angle!=400){
+	    	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
+	    }else{
+	    	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
+	    }
+            printf("semafori liberi");
             esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
             esp_mqtt_client_start(client);
             
             //vTaskDelay(30 * 1000 / portTICK_PERIOD_MS);
             sleeppa(60);
           
-          }else{
+           }else{
             //printf("semaforo occupato");
-          }
+           }
+	  }
          }
     }
 }
