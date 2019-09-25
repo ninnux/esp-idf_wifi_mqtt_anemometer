@@ -79,7 +79,8 @@ double avg_delta_x;
 double avg_delta_y;
 double avg_delta_z;
 double avg_delta;
-
+int speed_ok=0;
+int direction_ok=0;
 
 
 //static const char *TAG = "MQTT_EXAMPLE";
@@ -141,6 +142,7 @@ void vane_task(void *pvParameters)
             vTaskDelay(50 / portTICK_PERIOD_MS);
     	
         }
+	printf("fine calibrazione");
         // from https://appelsiini.net/2018/calibrate-magnetometer/
         Xoffset=(xmax+xmin)/2;
         Yoffset=(ymax+ymin)/2;
@@ -168,8 +170,8 @@ void vane_task(void *pvParameters)
         //printf("Offset X:%.2f, Y:%.2f\n", Xoffset,Yoffset);
         //printf("scale X:%.2f, Y:%.2f\n", Xscale,Yscale);
     
-        for(k=0;k<10;k++)
-        {
+       // for(k=0;k<10;k++)
+        //{
             qmc5883l_data_t data2;
             if (qmc5883l_get_data(&dev, &data2) == ESP_OK){
     	xmag=data2.x;
@@ -190,14 +192,14 @@ void vane_task(void *pvParameters)
             printf("angle:%.2f\n", 360-angle);
             printf("angle2:%.2f\n", 360-angle2);
             printf("angle3:%.3f\n", 360-angle3);
-    	    wind_angle+=(int) 360-angle2;
+    	    wind_angle=(int) 360-angle2;
             }else{
                 printf("Could not read qmc5883L data\n");
-    	}	
+    	//}	
     
             vTaskDelay(250 / portTICK_PERIOD_MS);
         }
-    	wind_angle=wind_angle/k;
+    	//wind_angle=wind_angle/k;
     	xSemaphoreGive( xSemaphore2 );
       }
    }
@@ -489,7 +491,15 @@ static void mqtt_app_start(void)
           #endif /* CONFIG_BROKER_URL_FROM_STDIN */
           
           
-          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE && xSemaphoreTake( xSemaphore2, ( TickType_t ) 10 ) == pdTRUE )  { 
+          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE)
+	  {
+	   speed_ok=1;
+	  }
+	  if ( xSemaphoreTake( xSemaphore2, ( TickType_t ) 10 ) == pdTRUE )  
+	  { 
+   	   direction_ok=1;
+          }
+	  if (speed_ok==1 && direction_ok==1){
 	    
 	    if(wind_angle!=400){
 	    	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
@@ -503,9 +513,11 @@ static void mqtt_app_start(void)
             //vTaskDelay(30 * 1000 / portTICK_PERIOD_MS);
             sleeppa(60);
           
-           }else{
-            printf("semafori occupati\n");
            }
+	   //else{
+           // printf("semafori occupati\n");
+    	   // //xSemaphoreGive( xSemaphore );
+           //}
          }
     }
 }
