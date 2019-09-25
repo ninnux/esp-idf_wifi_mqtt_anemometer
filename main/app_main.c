@@ -489,9 +489,7 @@ static void mqtt_app_start(void)
           #endif /* CONFIG_BROKER_URL_FROM_STDIN */
           
           
-          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE) 
-	  {
-	   if( xSemaphoreTake( xSemaphore2, ( TickType_t ) 10 ) == pdTRUE )  { 
+          if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE && xSemaphoreTake( xSemaphore2, ( TickType_t ) 10 ) == pdTRUE )  { 
 	    
 	    if(wind_angle!=400){
 	    	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
@@ -506,9 +504,8 @@ static void mqtt_app_start(void)
             sleeppa(60);
           
            }else{
-            //printf("semaforo occupato");
+            printf("semafori occupati\n");
            }
-	  }
          }
     }
 }
