@@ -169,9 +169,9 @@ void vane_task(void *pvParameters)
         printf("Magnetic data max: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmax, ymax, zmax);
         //printf("Offset X:%.2f, Y:%.2f\n", Xoffset,Yoffset);
         //printf("scale X:%.2f, Y:%.2f\n", Xscale,Yscale);
-    
-       // for(k=0;k<10;k++)
-        //{
+  	double y_part = 0, x_part = 0;  
+        for(k=0;k<10;k++)
+        {
             qmc5883l_data_t data2;
             if (qmc5883l_get_data(&dev, &data2) == ESP_OK){
     	xmag=data2.x;
@@ -193,13 +193,16 @@ void vane_task(void *pvParameters)
             printf("angle2:%.2f\n", 360-angle2);
             printf("angle3:%.3f\n", 360-angle3);
     	    wind_angle=(int) 360-angle2;
+	    x_part += cos (wind_angle * M_PI / 180);
+            y_part += sin (wind_angle * M_PI / 180);
             }else{
                 printf("Could not read qmc5883L data\n");
-    	//}	
+    	    }	
     
             vTaskDelay(250 / portTICK_PERIOD_MS);
         }
-    	//wind_angle=wind_angle/k;
+        //wind_angle=(wind_angle%360)/k;
+	wind_angle=atan2 (y_part / k, x_part / k) * 180 / M_PI;
     	xSemaphoreGive( xSemaphore2 );
       }
    }
