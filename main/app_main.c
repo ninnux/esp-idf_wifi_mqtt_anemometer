@@ -280,7 +280,8 @@ void anemometer_task(void *pvParameter)
     	  double mssum=0;
     	  extern double vento;
     	  for(i=0;i<10;i++) {
-    	      if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+    	      //if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+    	      if(xQueueReceive(gpio_evt_queue, &io_num, 2000 / portTICK_PERIOD_MS)) {
     	          if(io_num==GPIO_INPUT_IO_1){
     	      	gettimeofday(&now, NULL);
     	      	int time = now.tv_sec;
@@ -299,9 +300,16 @@ void anemometer_task(void *pvParameter)
     	          }else{
     	          	printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
     	          }
-    	      }
+    	      }else{
+	        printf("nessun interrupt\n");
+		mssum=0;
+	      }
     	  }
-	  vento=mssum/10;
+	  if(mssum!=0){
+	   vento=mssum/i;
+	  }else{
+	   vento=0;
+	  }
 	  //if(wind_angle!=400){
 	  //	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
 	  //}else{
