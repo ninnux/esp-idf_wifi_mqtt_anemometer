@@ -81,6 +81,7 @@ double avg_delta_z;
 double avg_delta;
 int speed_ok=0;
 int direction_ok=0;
+int calibration=0;
 
 
 //static const char *TAG = "MQTT_EXAMPLE";
@@ -125,9 +126,12 @@ void vane_task(void *pvParameters)
         ESP_ERROR_CHECK(qmc5883l_set_config(&dev, QMC5883L_DR_50, QMC5883L_OSR_128, QMC5883L_RNG_2));
     
     
+        // calibrazione
+        esp_err_t err = nvs_flash_init();
+	if(calibration==1){
     
-       qmc5883l_data_t data;
-        for(i=0;i<200;i++){
+        qmc5883l_data_t data;
+        for(i=0;i<200;i++){ 
     	if (qmc5883l_get_data(&dev, &data) == ESP_OK){
     		xvalue[i]=data.x;
     		yvalue[i]=data.y;
@@ -142,7 +146,6 @@ void vane_task(void *pvParameters)
             vTaskDelay(50 / portTICK_PERIOD_MS);
     	
         }
-	printf("fine calibrazione");
         // from https://appelsiini.net/2018/calibrate-magnetometer/
         Xoffset=(xmax+xmin)/2;
         Yoffset=(ymax+ymin)/2;
@@ -156,14 +159,56 @@ void vane_task(void *pvParameters)
         scale_x=avg_delta/avg_delta_x;
         scale_y=avg_delta/avg_delta_y;
         scale_z=avg_delta/avg_delta_z;
-        ///
-    
-    	
-        //Xoffset = (xmax + xmin)/2;
-        //Yoffset = (ymax + ymin)/2;
-    
-        //Xscale = xmax - xmin;
-        //Yscale = ymax - ymin;
+	// nvs
+    	nvs_handle my_handle;
+    	err = nvs_open("vane", NVS_READWRITE, &my_handle);
+    	if (err != ESP_OK) {
+    	    printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    	} else {
+            printf("Done\n");
+
+            int32_t Xoffset_nvs = (int) Xoffset*100; 
+            int32_t Zoffset_nvs = (int) Zoffset*100; 
+	    printf("scale_x:%.2f scale_z:%.2f\n",scale_x,scale_z);
+            int32_t scale_x_nvs = scale_x*100; 
+            int32_t scale_z_nvs = scale_z*100; 
+            err = nvs_set_i32(my_handle, "Xoffset_nvs", Xoffset_nvs);
+            err = nvs_set_i32(my_handle, "Zoffset_nvs", Zoffset_nvs);
+            err = nvs_set_i32(my_handle, "scale_x_nvs", scale_x_nvs);
+            err = nvs_set_i32(my_handle, "scale_z_nvs", scale_z_nvs);
+            printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+            printf("Committing updates in NVS ... ");
+	    printf("valori calibrazione su nvs Xoffset: %d Zoffset: %d scale_x: %d scale_z: %d \n",Xoffset_nvs,Zoffset_nvs,scale_x_nvs,scale_z_nvs);
+            err = nvs_commit(my_handle);
+            printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+
+            // Close
+            nvs_close(my_handle);
+	}
+	printf("fine calibrazione");
+	//fine calibrazione
+	}else{
+    	  nvs_handle my_handle;
+    	  err = nvs_open("vane", NVS_READWRITE, &my_handle);
+    	  if (err != ESP_OK) {
+    	      printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    	  } else {
+              int32_t Xoffset_nvs = 0; 
+              int32_t Zoffset_nvs = 0; 
+              int32_t scale_x_nvs = 0; 
+              int32_t scale_z_nvs = 0; 
+              err = nvs_get_i32(my_handle, "Xoffset_nvs", &Xoffset_nvs);
+              err = nvs_get_i32(my_handle, "Zoffset_nvs", &Zoffset_nvs);
+              err = nvs_get_i32(my_handle, "scale_x_nvs", &scale_x_nvs);
+              err = nvs_get_i32(my_handle, "scale_z_nvs", &scale_z_nvs);
+	      Xoffset=Xoffset_nvs/100;
+	      Zoffset=Zoffset_nvs/100;
+	      scale_x=(float)scale_x_nvs/100;
+	      scale_z=(float)scale_z_nvs/100;
+	      printf("valori calibrazione da nvs Xoffset: %.2f Zoffset: %.2f scale_x: %.2f scale_z: %.2f \n",Xoffset,Zoffset,scale_x,scale_z);
+              nvs_close(my_handle);
+	  }
+	}
     
         printf("Magnetic data min: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmin, ymin, zmin);
         printf("Magnetic data max: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmax, ymax, zmax);
@@ -174,27 +219,27 @@ void vane_task(void *pvParameters)
         {
             qmc5883l_data_t data2;
             if (qmc5883l_get_data(&dev, &data2) == ESP_OK){
-    	xmag=data2.x;
-    	ymag=data2.y;
-    	zmag=data2.z;
-            xmag = (xmag - Xoffset) * scale_x;
-            ymag = (ymag - Yoffset) * scale_y;
-            zmag = (zmag - Zoffset) * scale_z;
-            angle = atan2(xmag, ymag)*(180/3.14)+180;
-            angle2 = atan2(xmag, zmag)*(180/3.14)+180;
-            angle3 = atan2(ymag, zmag)*(180/3.14)+180;
+    	    	xmag=data2.x;
+    	    	ymag=data2.y;
+    	    	zmag=data2.z;
+            	xmag = (xmag - Xoffset) * scale_x;
+            	ymag = (ymag - Yoffset) * scale_y;
+            	zmag = (zmag - Zoffset) * scale_z;
+            	angle = atan2(xmag, ymag)*(180/3.14)+180;
+            	angle2 = atan2(xmag, zmag)*(180/3.14)+180;
+            	angle3 = atan2(ymag, zmag)*(180/3.14)+180;
     
     
-            printf("Magnetic data min: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmin, ymin, zmin);
-            printf("Magnetic data max: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmax, ymax, zmax);
-            printf("Magnetic reading data2: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", data2.x, data2.y, data2.z);
-            printf("results X:%.2f,Y:%.2f , angle:%.2f\n", xmag, ymag, angle);
-            printf("angle:%.2f\n", 360-angle);
-            printf("angle2:%.2f\n", 360-angle2);
-            printf("angle3:%.3f\n", 360-angle3);
-    	    wind_angle=(int) 360-angle2;
-	    x_part += cos (wind_angle * M_PI / 180);
-            y_part += sin (wind_angle * M_PI / 180);
+            	printf("Magnetic data min: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmin, ymin, zmin);
+            	printf("Magnetic data max: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", xmax, ymax, zmax);
+            	printf("Magnetic reading data2: X:%.2f mG, Y:%.2f mG, Z:%.2f mG\n", data2.x, data2.y, data2.z);
+            	printf("results X:%.2f,Y:%.2f , angle:%.2f\n", xmag, ymag, angle);
+            	printf("angle:%.2f\n", 360-angle);
+            	printf("angle2:%.2f\n", 360-angle2);
+            	printf("angle3:%.3f\n", 360-angle3);
+    	    	wind_angle=(int) 360-angle2;
+	    	x_part += cos (wind_angle * M_PI / 180);
+            	y_part += sin (wind_angle * M_PI / 180);
             }else{
                 printf("Could not read qmc5883L data\n");
     	    }	
@@ -203,6 +248,7 @@ void vane_task(void *pvParameters)
         }
         //wind_angle=(wind_angle%360)/k;
 	wind_angle=atan2 (y_part / k, x_part / k) * 180 / M_PI;
+	if(wind_angle<0) wind_angle=360+wind_angle;
     	xSemaphoreGive( xSemaphore2 );
       }
    }
