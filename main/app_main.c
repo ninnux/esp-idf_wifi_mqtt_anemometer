@@ -78,44 +78,55 @@ void anemometer_task(void *pvParameter)
    {
        if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE )
       {
-    	uint32_t io_num;
-    	uint32_t oldtime=0;
-    	uint32_t elapsed=0;
-    	float ms=0;
-    	float m=0;
-    	float elapsed_sec=0;
-    	int r=23;
-    	int i=0;
-    	double mssum=0;
-    	extern double vento;
-    	for(i=0;i<10;i++) {
-    	    if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-    	        if(io_num==GPIO_INPUT_IO_1){
-    	    	gettimeofday(&now, NULL);
-    	    	int time = now.tv_sec;
-    	    	int utime = now.tv_usec;
-    	    	uint32_t nowtime=(time*1000000)+utime;
-    	    	elapsed=nowtime-oldtime;
-    	    	elapsed_sec=(float) elapsed/1000000;
-    	    	m=(float) r/100;
-    	    	ms=(float) (m*6.28)/elapsed_sec;
+    	  uint32_t io_num;
+    	  uint32_t oldtime=0;
+    	  uint32_t elapsed=0;
+    	  float ms=0;
+    	  float m=0;
+    	  float elapsed_sec=0;
+    	  int r=23;
+    	  int i=0;
+    	  double mssum=0;
+    	  extern double vento;
+    	  for(i=0;i<10;i++) {
+    	      if(xQueueReceive(gpio_evt_queue, &io_num, 2000 / portTICK_PERIOD_MS)) {
+    	          if(io_num==GPIO_INPUT_IO_1){
+    	      		gettimeofday(&now, NULL);
+    	      		int time = now.tv_sec;
+    	      		int utime = now.tv_usec;
+    	      		uint32_t nowtime=(time*1000000)+utime;
+    	      		elapsed=nowtime-oldtime;
+    	      		elapsed_sec=(float) elapsed/1000000;
+    	      		m=(float) r/100;
+    	      		ms=(float) (m*6.28)/elapsed_sec;
 
-    			printf("passati %d usec = %f m/s = %f km/h = %f knots\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384));
-    			//printf("passati %d usec = %f m/s = %f km/h = %f knots; m=%f elapsed_sec=%f\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384),m,elapsed_sec);
-    			oldtime=nowtime;
-    	    	mssum+=ms;
-    	    	
-    	        }else{
-    	        	printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
-    	        }
-    	    }
-    	}
-	vento=mssum/10;
-	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
-	xSemaphoreGive( xSemaphore );
-	vTaskDelete(NULL);
-        }
-    }
+    	  		printf("passati %d usec = %f m/s = %f km/h = %f knots\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384));
+    	  		//printf("passati %d usec = %f m/s = %f km/h = %f knots; m=%f elapsed_sec=%f\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384),m,elapsed_sec);
+    	  		oldtime=nowtime;
+    	      		mssum+=ms;
+    	      	
+    	          }else{
+    	          	printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+    	          }
+    	      }else{
+	        printf("nessun interrupt\n");
+		mssum=0;
+	      }
+    	  }
+	  if(mssum!=0){
+	   vento=mssum/i;
+	  }else{
+	   vento=0;
+	  }
+	  //if(wind_angle!=400){
+	  //	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
+	  //}else{
+	  //	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
+	  //}
+	  xSemaphoreGive( xSemaphore );
+	  vTaskDelete(NULL);
+       }
+     }
 }
 
 void init_gpio_for_anemometer(){
