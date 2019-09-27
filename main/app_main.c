@@ -302,7 +302,7 @@ void anemometer_task(void *pvParameter)
     	          }
     	      }else{
 	        printf("nessun interrupt\n");
-		mssum=0;
+		mssum=+0;
 	      }
     	  }
 	  if(mssum!=0){
