@@ -110,7 +110,7 @@ void anemometer_task(void *pvParameter)
     	          }
     	      }else{
 	        printf("nessun interrupt\n");
-		mssum=0;
+		mssum+=0;
 	      }
     	  }
 	  if(mssum!=0){
@@ -118,11 +118,7 @@ void anemometer_task(void *pvParameter)
 	  }else{
 	   vento=0;
 	  }
-	  //if(wind_angle!=400){
-	  //	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
-	  //}else{
-	  //	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
-	  //}
+	  sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
 	  xSemaphoreGive( xSemaphore );
 	  vTaskDelete(NULL);
        }
