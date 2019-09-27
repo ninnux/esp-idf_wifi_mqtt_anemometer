@@ -3,5 +3,5 @@
 # project subdirectory.
 #
 PROJECT_NAME := esp-idf_wifi_mqtt_anemometer
-PROJECT_VER = "0.2"
+PROJECT_VER = "vane_0.3"
 include $(IDF_PATH)/make/project.mk
