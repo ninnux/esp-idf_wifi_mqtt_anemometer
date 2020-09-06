@@ -336,7 +336,7 @@ void init_gpio_for_anemometer(){
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     //start gpio task
-    xTaskCreate(vane_task, "vane_task", 2048, NULL, 10, NULL);
+    xTaskCreate(vane_task, "vane_task", 4096, NULL, 10, NULL);
     xTaskCreate(anemometer_task, "anemometer_task", 2048, NULL, 10, NULL);
 
     //install gpio isr service
