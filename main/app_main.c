@@ -44,8 +44,8 @@ double vento=0;
 #include "ninux_esp32_ota.h"
 
 #include "ninux_sensordata_pb.h"
-#define TIMESLOT 3 
-#define SLEEPTIME 10 
+#define TIMESLOT 6 
+#define SLEEPTIME 60 
 
 #include <qmc5883l.h>
 #include <math.h>
@@ -429,6 +429,7 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
             //msg_id = esp_mqtt_client_publish(client, mqtt_topic,(const char *) msgData, 0, 1, 0);
             msg_id = esp_mqtt_client_publish(client, mqtt_topic,rtc_buffer, rtc_buffer_len, 1, 0);
+	    rtc_buffer_len=0;
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
