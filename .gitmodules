@@ -4,3 +4,6 @@
 [submodule "components/ninux_voltage_reader"]
 	path = components/ninux_voltage_reader
 	url = https://github.com/ninnux/ninnux_voltage_reader.git
+[submodule "components/ninux_sensordata_pb"]
+	path = components/ninux_sensordata_pb
+	url = https://github.com/ninnux/ninux_sensordata_pb.git

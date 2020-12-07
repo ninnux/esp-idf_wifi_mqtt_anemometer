@@ -43,6 +43,9 @@ double vento=0;
 #define ESP_INTR_FLAG_DEFAULT 0
 #include "ninux_esp32_ota.h"
 
+#include "ninux_sensordata_pb.h"
+#define TIMESLOT 3 
+#define SLEEPTIME 10 
 
 #include <qmc5883l.h>
 #include <math.h>
@@ -50,6 +53,14 @@ double vento=0;
 
 #define SDA_GPIO 16
 #define SCL_GPIO 17
+
+
+RTC_DATA_ATTR char rtc_buffer[1024];
+RTC_DATA_ATTR int rtc_buffer_len=0;
+
+RTC_DATA_ATTR int deepsleep=0;
+RTC_DATA_ATTR int counter=1;
+RTC_DATA_ATTR int timeref=0;
 
 float xvalue[200];
 float yvalue[200];
@@ -128,6 +139,10 @@ void vane_task(void *pvParameters)
     
         // calibrazione
         esp_err_t err = nvs_flash_init();
+        int cal;
+	cal=gpio_get_level(CONFIG_CALIBRATION_GPIO);
+        printf("GPIO per la calibrazione %d\n",cal);
+        calibration=cal;
 	if(calibration==1){
     
         qmc5883l_data_t data;
@@ -393,10 +408,9 @@ void sleeppa(int sec)
 
     printf("Entering deep sleep\n");
     gettimeofday(&sleep_enter_time, NULL);
-    esp_wifi_disconnect();
-    esp_wifi_stop();
-    esp_wifi_deinit();
-
+    //esp_wifi_disconnect();
+    //esp_wifi_stop();
+    //esp_wifi_deinit();
 
     //ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
     esp_deep_sleep_start();
@@ -407,12 +421,14 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     int msg_id;
     char mqtt_topic[128];
     bzero(mqtt_topic,sizeof(mqtt_topic));
-    sprintf(mqtt_topic,"ambiente/%s/jsondata",CONFIG_MQTT_NODE_NAME);
+    //sprintf(mqtt_topic,"ambiente/%s/jsondata",CONFIG_MQTT_NODE_NAME);
+    sprintf(mqtt_topic,"ambiente/%s/ninuxsensordata_pb",CONFIG_MQTT_NODE_NAME);
     // your_context_t *context = event->context;
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-            msg_id = esp_mqtt_client_publish(client, mqtt_topic,(const char *) msgData, 0, 1, 0);
+            //msg_id = esp_mqtt_client_publish(client, mqtt_topic,(const char *) msgData, 0, 1, 0);
+            msg_id = esp_mqtt_client_publish(client, mqtt_topic,rtc_buffer, rtc_buffer_len, 1, 0);
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -557,18 +573,35 @@ static void mqtt_app_start(void)
    	   direction_ok=1;
           }
 	  if (speed_ok==1 && direction_ok==1){
-	    
-	    if(wind_angle!=400){
-	    	sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
-	    }else{
-	    	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
-	    }
-            printf("semafori liberi");
-            esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
-            esp_mqtt_client_start(client);
+	   printf("dati pronti, counter: %d",counter); 
+   	    if(counter%TIMESLOT!=0){
+	      printf("inserisco i dati nel buffer\n");
+  	      if(wind_angle!=400){
+	      	//sprintf((char*)msgData,"{\"wind\":%.2f,\"wind_direction\":%d}", vento*10,wind_angle*10);
+  	          char* keys[]={"wind","wdir"}; 
+  	          int values[]={vento*10,wind_angle*10};
+  	          sensordata_insert_values2((unsigned char **) &rtc_buffer,timeref*SLEEPTIME,keys,values,2,&rtc_buffer_len);
+
+	      }else{
+	      	//sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
+  	        char* keys[]={"wind"}; 
+  	        int values[]={vento*10};
+  	        sensordata_insert_values2((unsigned char **) &rtc_buffer,timeref*SLEEPTIME,keys,values,1,&rtc_buffer_len);
+	      }
+              counter+=1;
+      	      timeref+=1;
+              sleeppa(SLEEPTIME);
+            }else{
             
-            //vTaskDelay(30 * 1000 / portTICK_PERIOD_MS);
-            sleeppa(60);
+	    printf("spedisco il buffer\n");
+   	    //if(counter%TIMESLOT!=0){
+	    	//counter+=1;
+      	    	//timeref+=1;
+                esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
+                esp_mqtt_client_start(client);
+	    	counter+=1;
+      	    	timeref+=1;
+            };
           
            }
 	   //else{
@@ -581,34 +614,35 @@ static void mqtt_app_start(void)
 
 void app_main()
 {
-    ESP_LOGI(TAG, "[APP] Startup..");
-    ESP_LOGI(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
-    ESP_LOGI(TAG, "[APP] IDF version: %s", esp_get_idf_version());
+    if(counter%TIMESLOT==0){
+      ESP_LOGI(TAG, "[APP] Startup..");
+      ESP_LOGI(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
+      ESP_LOGI(TAG, "[APP] IDF version: %s", esp_get_idf_version());
 
-    esp_log_level_set("*", ESP_LOG_INFO);
-    esp_log_level_set("MQTT_CLIENT", ESP_LOG_VERBOSE);
-    esp_log_level_set("TRANSPORT_TCP", ESP_LOG_VERBOSE);
-    esp_log_level_set("TRANSPORT_SSL", ESP_LOG_VERBOSE);
-    esp_log_level_set("TRANSPORT", ESP_LOG_VERBOSE);
-    esp_log_level_set("OUTBOX", ESP_LOG_VERBOSE);
+      esp_log_level_set("*", ESP_LOG_INFO);
+      esp_log_level_set("MQTT_CLIENT", ESP_LOG_VERBOSE);
+      esp_log_level_set("TRANSPORT_TCP", ESP_LOG_VERBOSE);
+      esp_log_level_set("TRANSPORT_SSL", ESP_LOG_VERBOSE);
+      esp_log_level_set("TRANSPORT", ESP_LOG_VERBOSE);
+      esp_log_level_set("OUTBOX", ESP_LOG_VERBOSE);
 
 
 
 
-    //esp_err_t err = nvs_flash_init();
-    //if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    //    // 1.OTA app partition table has a smaller NVS partition size than the non-OTA
-    //    // partition table. This size mismatch may cause NVS initialization to fail.
-    //    // 2.NVS partition contains data in new format and cannot be recognized by this version of code.
-    //    // If this happens, we erase NVS partition and initialize NVS again.
-    //    ESP_ERROR_CHECK(nvs_flash_erase());
-    //    err = nvs_flash_init();
-    //}
+      //esp_err_t err = nvs_flash_init();
+      //if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      //    // 1.OTA app partition table has a smaller NVS partition size than the non-OTA
+      //    // partition table. This size mismatch may cause NVS initialization to fail.
+      //    // 2.NVS partition contains data in new format and cannot be recognized by this version of code.
+      //    // If this happens, we erase NVS partition and initialize NVS again.
+      //    ESP_ERROR_CHECK(nvs_flash_erase());
+      //    err = nvs_flash_init();
+      //}
 
-    wifi_init();
-    esp_ota_mark_app_valid_cancel_rollback(); 
-    ninux_esp32_ota();
-
+      wifi_init();
+      esp_ota_mark_app_valid_cancel_rollback(); 
+      ninux_esp32_ota();
+    }
 
     vSemaphoreCreateBinary( xSemaphore );
     vSemaphoreCreateBinary( xSemaphore2 );
@@ -621,4 +655,5 @@ void app_main()
     vTaskDelay( 3000 / portTICK_RATE_MS );
 
     mqtt_app_start();
+    
 }
