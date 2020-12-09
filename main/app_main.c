@@ -40,6 +40,9 @@ double vento=0;
 #define GPIO_INPUT_IO_0     4
 #define GPIO_INPUT_IO_1     5
 #define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_INPUT_IO_0) | (1ULL<<GPIO_INPUT_IO_1))
+#define GPIO_OUTPUT_IO_0    0 
+#define GPIO_OUTPUT_IO_1    2 
+#define GPIO_OUTPUT_PIN_SEL  ((1ULL<<GPIO_OUTPUT_IO_0) | (1ULL<<GPIO_OUTPUT_IO_1))
 #define ESP_INTR_FLAG_DEFAULT 0
 #include "ninux_esp32_ota.h"
 
@@ -280,6 +283,16 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 
 void anemometer_task(void *pvParameter)
 {
+    gpio_config_t io_conf;
+    io_conf.pull_down_en = 0;
+    io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
+    //bit mask of the pins, use GPIO4/5 here
+    io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
+    //set as input mode    
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    //enable pull-up mode
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
    if( xSemaphore != NULL )
    {
        if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE)  
@@ -294,6 +307,7 @@ void anemometer_task(void *pvParameter)
     	  int i=0;
     	  double mssum=0;
     	  extern double vento;
+	  gpio_set_level(2,1);
     	  for(i=0;i<10;i++) {
     	      //if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
     	      if(xQueueReceive(gpio_evt_queue, &io_num, 2000 / portTICK_PERIOD_MS)) {
@@ -330,6 +344,7 @@ void anemometer_task(void *pvParameter)
 	  //}else{
 	  //	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
 	  //}
+	  gpio_set_level(2,0);
 	  xSemaphoreGive( xSemaphore );
 	  vTaskDelete(NULL);
        }
