@@ -283,16 +283,16 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 
 void anemometer_task(void *pvParameter)
 {
-    gpio_config_t io_conf;
-    io_conf.pull_down_en = 0;
-    io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
-    //bit mask of the pins, use GPIO4/5 here
-    io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
-    //set as input mode    
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    //enable pull-up mode
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);
+    //gpio_config_t io_conf;
+    //io_conf.pull_down_en = 0;
+    //io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
+    ////bit mask of the pins, use GPIO4/5 here
+    //io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
+    ////set as input mode    
+    //io_conf.mode = GPIO_MODE_OUTPUT;
+    ////enable pull-up mode
+    //io_conf.pull_up_en = 0;
+    //gpio_config(&io_conf);
    if( xSemaphore != NULL )
    {
        if( xSemaphoreTake( xSemaphore, ( TickType_t ) 10 ) == pdTRUE)  
@@ -307,7 +307,7 @@ void anemometer_task(void *pvParameter)
     	  int i=0;
     	  double mssum=0;
     	  extern double vento;
-	  gpio_set_level(2,1);
+	  //gpio_set_level(2,1);
     	  for(i=0;i<10;i++) {
     	      //if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
     	      if(xQueueReceive(gpio_evt_queue, &io_num, 2000 / portTICK_PERIOD_MS)) {
@@ -344,7 +344,7 @@ void anemometer_task(void *pvParameter)
 	  //}else{
 	  //	sprintf((char*)msgData,"{\"wind\":%.2f}", vento*10);
 	  //}
-	  gpio_set_level(2,0);
+	  //gpio_set_level(2,0);
 	  xSemaphoreGive( xSemaphore );
 	  vTaskDelete(NULL);
        }
@@ -366,6 +366,8 @@ void init_gpio_for_anemometer(){
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     //start gpio task
+    //accendo i sensori
+    gpio_set_level(2,1);
     xTaskCreate(vane_task, "vane_task", 4096, NULL, 10, NULL);
     xTaskCreate(anemometer_task, "anemometer_task", 2048, NULL, 10, NULL);
 
@@ -589,6 +591,9 @@ static void mqtt_app_start(void)
    	   direction_ok=1;
           }
 	  if (speed_ok==1 && direction_ok==1){
+	   //spengo i sensori
+	   gpio_set_level(2,0);
+
 	   printf("dati pronti, counter: %d",counter); 
    	    if(counter%TIMESLOT!=0){
 	      printf("inserisco i dati nel buffer\n");
@@ -630,6 +635,17 @@ static void mqtt_app_start(void)
 
 void app_main()
 {
+    gpio_config_t io_conf;
+    io_conf.pull_down_en = 0;
+    io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
+    //bit mask of the pins, use GPIO4/5 here
+    io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
+    //set as input mode    
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    //enable pull-up mode
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
+
     if(counter%TIMESLOT==0){
       ESP_LOGI(TAG, "[APP] Startup..");
       ESP_LOGI(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
