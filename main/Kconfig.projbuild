@@ -26,5 +26,10 @@ menu "Example Configuration"
         default ""
         help
             Node name: used in mqtt topic es. ambiente/<node_name>/jsondata
+    config CALIBRATION_GPIO 
+        int "GPIO to enable calibration"
+        default 18
+        help
+            GPIO number to be checked for calibration start (HIGH = calibration, LOW = normal mode)
 
 endmenu
