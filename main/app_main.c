@@ -5,7 +5,7 @@
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
-#include "esp_event_loop.h"
+#include "esp_event.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -27,7 +27,7 @@
 #include "driver/i2c.h"
 
 #include "esp_sleep.h"
-#include "esp32/ulp.h"
+#include "ulp.h"
 #include "driver/touch_pad.h"
 #include "driver/adc.h"
 #include "driver/rtc_io.h"
@@ -525,7 +525,7 @@ static void wifi_init(void)
 
     tcpip_adapter_init();
     wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
