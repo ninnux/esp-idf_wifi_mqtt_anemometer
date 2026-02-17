@@ -115,10 +115,10 @@ SemaphoreHandle_t xSemaphore = NULL;
 SemaphoreHandle_t xSemaphore2 = NULL;
 
 
-static const gpio_num_t SENSOR_GPIO = 17;
-static const uint32_t LOOP_DELAY_MS = 250;
-static const int MAX_SENSORS = 8;
-static const int RESCAN_INTERVAL = 8;
+//static const gpio_num_t SENSOR_GPIO = 17;
+//static const uint32_t LOOP_DELAY_MS = 250;
+//static const int MAX_SENSORS = 8;
+//static const int RESCAN_INTERVAL = 8;
 
 static xQueueHandle gpio_evt_queue = NULL;
 struct timeval now;
@@ -198,7 +198,7 @@ void vane_task(void *pvParameters)
             err = nvs_set_i32(my_handle, "scale_z_nvs", scale_z_nvs);
             printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
             printf("Committing updates in NVS ... ");
-	    printf("valori calibrazione su nvs Xoffset: %d Zoffset: %d scale_x: %d scale_z: %d \n",Xoffset_nvs,Zoffset_nvs,scale_x_nvs,scale_z_nvs);
+	    //printf("valori calibrazione su nvs Xoffset: %d Zoffset: %d scale_x: %d scale_z: %d \n",Xoffset_nvs,Zoffset_nvs,scale_x_nvs,scale_z_nvs);
             err = nvs_commit(my_handle);
             printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
 
@@ -323,13 +323,13 @@ void anemometer_task(void *pvParameter)
     	      	m=(float) r/100;
     	      	ms=(float) (m*6.28)/elapsed_sec;
 
-    	  		printf("passati %d usec = %f m/s = %f km/h = %f knots\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384));
+    	  		printf("passati %ld usec = %f m/s = %f km/h = %f knots\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384));
     	  		//printf("passati %d usec = %f m/s = %f km/h = %f knots; m=%f elapsed_sec=%f\n",elapsed,ms,(float) (ms*3.6),(float) (ms*1.94384),m,elapsed_sec);
     	  		oldtime=nowtime;
     	      	mssum+=ms;
     	      	
     	          }else{
-    	          	printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+    	          	printf("GPIO[%ld] intr, val: %d\n", io_num, gpio_get_level(io_num));
     	          }
     	      }else{
 	        printf("nessun interrupt\n");
@@ -356,7 +356,7 @@ void anemometer_task(void *pvParameter)
 void init_gpio_for_anemometer(){
     gpio_config_t io_conf;
     io_conf.pull_down_en = 0;
-    io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
+    io_conf.intr_type = GPIO_INTR_POSEDGE;
     //bit mask of the pins, use GPIO4/5 here
     io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
     //set as input mode    
@@ -635,7 +635,7 @@ void app_main()
 {
     gpio_config_t io_conf;
     io_conf.pull_down_en = 0;
-    io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
+    io_conf.intr_type = GPIO_INTR_POSEDGE;
     //bit mask of the pins, use GPIO4/5 here
     io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
     //set as input mode    
@@ -646,7 +646,7 @@ void app_main()
 
     if(counter%TIMESLOT==0){
       ESP_LOGI(TAG, "[APP] Startup..");
-      ESP_LOGI(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
+      //ESP_LOGI(TAG, "[APP] Free memory: %d bytes", esp_get_free_heap_size());
       ESP_LOGI(TAG, "[APP] IDF version: %s", esp_get_idf_version());
 
       esp_log_level_set("*", ESP_LOG_INFO);
