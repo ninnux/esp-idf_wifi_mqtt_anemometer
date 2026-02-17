@@ -1,6 +1,10 @@
-set(COMPONENT_SRCDIRS .)
-set(COMPONENT_ADD_INCLUDEDIRS .)
+idf_component_register(
+    SRCS
+        "qmc5883l.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+       i2cdev
+       log
+)
 
-set(COMPONENT_REQUIRES i2cdev log)
-
-register_component()

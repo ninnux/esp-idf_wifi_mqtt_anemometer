@@ -2,10 +2,12 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include "esp_netif.h"
 #include "esp_wifi.h"
 #include "esp_system.h"
+#include "esp_mac.h"
 #include "nvs_flash.h"
-#include "esp_event_loop.h"
+#include "esp_event.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -20,14 +22,14 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 
-#include "rom/ets_sys.h"
+// #include "rom/ets_sys.h"  // rimosso in v5, non usato
 #include "driver/gpio.h"
 #include "sdkconfig.h"
 
 #include "driver/i2c.h"
 
 #include "esp_sleep.h"
-#include "esp32/ulp.h"
+//#include "ulp.h"
 #include "driver/touch_pad.h"
 #include "driver/adc.h"
 #include "driver/rtc_io.h"
@@ -432,15 +434,15 @@ void sleeppa(int sec)
     //ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
     esp_deep_sleep_start();
 }
-static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
+                               int32_t event_id, void *event_data)
 {
+    esp_mqtt_event_handle_t event = event_data;
     esp_mqtt_client_handle_t client = event->client;
     int msg_id;
     char mqtt_topic[128];
     bzero(mqtt_topic,sizeof(mqtt_topic));
-    //sprintf(mqtt_topic,"ambiente/%s/jsondata",CONFIG_MQTT_NODE_NAME);
     sprintf(mqtt_topic,"ambiente/%s/ninuxsensordata_pb",CONFIG_MQTT_NODE_NAME);
-    // your_context_t *context = event->context;
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
@@ -475,38 +477,34 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
             ESP_LOGI(TAG, "Other event id:%d", event->event_id);
             break;
     }
-    return ESP_OK;
 }
 
 static int s_retry_num = 0;
 
-static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
+static void event_handler_wifi(void* arg, esp_event_base_t event_base,
+                               int32_t event_id, void* event_data)
 {
-    switch (event->event_id) {
-        case SYSTEM_EVENT_STA_START:
+    if (event_id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        if (s_retry_num < 3) {
             esp_wifi_connect();
-            break;
-        case SYSTEM_EVENT_STA_GOT_IP:
-            xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
-
-            break;
-        case SYSTEM_EVENT_STA_DISCONNECTED:
-        {
-            if (s_retry_num < 3) {
-            	esp_wifi_connect();
-            	xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
-                s_retry_num++;
-		printf("riprovo la %d volta!!\n",s_retry_num);
-	    }else{
-		printf("restart!!\n");
-		esp_restart();	
-	    } 
-            break;
-	}
-        default:
-            break;
+            xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
+            s_retry_num++;
+            printf("riprovo la %d volta!!\n", s_retry_num);
+        } else {
+            printf("restart!!\n");
+            esp_restart();
+        }
     }
-    return ESP_OK;
+}
+
+static void event_handler_ip(void* arg, esp_event_base_t event_base,
+                             int32_t event_id, void* event_data)
+{
+    if (event_id == IP_EVENT_STA_GOT_IP) {
+        xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
+    }
 }
 
 static void wifi_init(void)
@@ -514,28 +512,29 @@ static void wifi_init(void)
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // 1.OTA app partition table has a smaller NVS partition size than the non-OTA
-        // partition table. This size mismatch may cause NVS initialization to fail.
-        // 2.NVS partition contains data in new format and cannot be recognized by this version of code.
-        // If this happens, we erase NVS partition and initialize NVS again.
         ESP_ERROR_CHECK(nvs_flash_erase());
         err = nvs_flash_init();
     }
 
-
-    tcpip_adapter_init();
     wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler_wifi, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler_ip, NULL, NULL));
+
     wifi_config_t wifi_config = {
         .sta = {
             .ssid = CONFIG_WIFI_SSID,
             .password = CONFIG_WIFI_PASSWORD,
         },
     };
-    //ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
     ESP_LOGI(TAG, "start the WIFI SSID:[%s]", CONFIG_WIFI_SSID);
@@ -547,9 +546,7 @@ static void wifi_init(void)
 static void mqtt_app_start(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
-        .uri = CONFIG_BROKER_URL,
-        .event_handle = mqtt_event_handler,
-        // .user_context = (void *)your_context
+        .broker.address.uri = CONFIG_BROKER_URL,
     };
 
 
@@ -619,6 +616,7 @@ static void mqtt_app_start(void)
 	    	//counter+=1;
       	    	//timeref+=1;
                 esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
+                esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
                 esp_mqtt_client_start(client);
 	    	counter+=1;
       	    	timeref+=1;
@@ -676,16 +674,19 @@ void app_main()
       ninux_esp32_ota();
     }
 
-    vSemaphoreCreateBinary( xSemaphore );
-    vSemaphoreCreateBinary( xSemaphore2 );
-    vTaskDelay( 1000 / portTICK_RATE_MS );
+    xSemaphore  = xSemaphoreCreateBinary();
+    xSemaphore2 = xSemaphoreCreateBinary();
+    xSemaphoreGive( xSemaphore );
+    xSemaphoreGive( xSemaphore2 );
+    vTaskDelay( 1000 / portTICK_PERIOD_MS );
     //xTaskCreate( &DHT_task, "DHT_task", 2048, NULL, 5, NULL );
     //i2c_master_init();
     //xTaskCreate(&task_bme280_normal_mode, "bme280_normal_mode",  2048, NULL, 6, NULL);
     init_gpio_for_anemometer();
     //xTaskCreate(anemometer_task, "anemometer_task", configMINIMAL_STACK_SIZE * 4, NULL, 5, NULL);
-    vTaskDelay( 3000 / portTICK_RATE_MS );
+    vTaskDelay( 3000 / portTICK_PERIOD_MS );
 
     mqtt_app_start();
     
 }
+
